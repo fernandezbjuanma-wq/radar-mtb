@@ -20,74 +20,34 @@
         }
         .header { font-size: 18px; color: #00CC96; margin-bottom: 20px; font-weight: bold; }
         
-        /* Grilla para organizar los datos */
-        .grid-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .caja-dato {
-            background-color: #1e1e1e;
-            padding: 15px 5px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .caja-dato { background-color: #1e1e1e; padding: 15px 5px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.3s; }
         .numero-gigante { font-size: 40px; font-weight: bold; margin: 0; line-height: 1.1; }
         .texto-chico { font-size: 14px; color: #aaa; margin: 5px 0 0 0; }
         
-        /* Colores dinámicos */
         .color-velocidad { color: #ffffff; }
-        .color-pendiente { color: #FECB52; }
+        .color-pendiente { color: #FECB52; transition: 0.3s; }
         .color-distancia { color: #4DA8DA; }
         .color-tiempo { color: #FF9F1C; }
 
-        /* Contenedor del Mapa */
-        #mapa {
-            height: 250px;
-            width: 100%;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: none; /* Se oculta hasta tener señal GPS */
-            border: 2px solid #333;
-        }
-
-        .zona { 
-            padding: 15px; 
-            border-radius: 12px; 
-            font-size: 16px; 
-            font-weight: bold; 
-            background-color: #333;
-            margin-bottom: 20px;
-        }
-
-        .btn-iniciar { 
-            background-color: #00CC96; 
-            color: #121212; 
-            border: none; 
-            padding: 18px 35px; 
-            font-size: 20px; 
-            border-radius: 50px; 
-            cursor: pointer; 
-            font-weight: bold;
-            width: 100%;
-            max-width: 300px;
-        }
+        #mapa { height: 250px; width: 100%; border-radius: 12px; margin-bottom: 20px; display: none; border: 2px solid #333; }
+        
+        .zona { padding: 15px; border-radius: 12px; font-size: 16px; font-weight: bold; background-color: #333; margin-bottom: 20px; transition: 0.5s; }
+        
+        .btn-iniciar { background-color: #00CC96; color: #121212; border: none; padding: 18px 35px; font-size: 20px; border-radius: 50px; cursor: pointer; font-weight: bold; width: 100%; max-width: 300px; }
     </style>
 </head>
 <body>
 
     <div class="header">🚵‍♂️ RADAR TÁCTICO EN VIVO</div>
 
-    <!-- Panel de 4 datos -->
+    <!-- PANEL DE 4 DATOS (Acá están el tiempo y los kilómetros) -->
     <div class="grid-container">
         <div class="caja-dato">
             <p class="numero-gigante color-velocidad" id="ui-velocidad">0.0</p>
             <p class="texto-chico">km/h</p>
         </div>
-        <div class="caja-dato">
+        <div class="caja-dato" id="caja-pendiente">
             <p class="numero-gigante color-pendiente" id="ui-pendiente">0.0</p>
             <p class="texto-chico">% Pendiente</p>
         </div>
@@ -101,7 +61,6 @@
         </div>
     </div>
 
-    <!-- Acá va a aparecer el mapa -->
     <div id="mapa"></div>
 
     <div class="zona" id="ui-estado">
@@ -111,27 +70,44 @@
     <button class="btn-iniciar" id="btn-start" onclick="iniciarRecorrido()">▶️ INICIAR RECORRIDO</button>
 
     <script>
-        // Variables globales
         let cronometro;
         let segundosTranscurridos = 0;
-        let distanciaTotal = 0;
+        let distanciaTotal = 0; 
         let ultimaPosicion = null;
+        
+        // Variables para la Pendiente
+        let ultimaAltitud = null;
+        let distanciaParaPendiente = 0; 
         
         // Variables del Mapa
         let mapa = null;
         let marcador = null;
         let trazadoRuta = null;
 
+        // Variables para el Entrenador de Voz
+        let zonaActual = "NINGUNA"; 
+        let motorVoz = window.speechSynthesis;
+
+        // Función para que el celular hable
+        function hablar(mensaje) {
+            if(motorVoz.speaking) { motorVoz.cancel(); } 
+            let voz = new SpeechSynthesisUtterance(mensaje);
+            voz.lang = 'es-AR'; 
+            motorVoz.speak(voz);
+        }
+
+        // MOTOR PRINCIPAL
         function iniciarRecorrido() {
             document.getElementById('btn-start').style.display = 'none';
             document.getElementById('ui-estado').innerText = "📡 Buscando señal GPS...";
-            document.getElementById('ui-estado').style.backgroundColor = "#FECB52";
-            document.getElementById('ui-estado').style.color = "#000";
+            
+            // Prueba de voz al iniciar
+            hablar("Radar activado. Calculando datos de satélite.");
 
-            // Iniciar Cronómetro
+            // ARRANCA EL TIEMPO
             cronometro = setInterval(actualizarTiempo, 1000);
 
-            // Iniciar GPS
+            // ARRANCA EL GPS
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(procesarGPS, errorGPS, {
                     enableHighAccuracy: true,
@@ -149,64 +125,108 @@
             let minutos = Math.floor((segundosTranscurridos % 3600) / 60);
             let segundos = segundosTranscurridos % 60;
             
-            let textoTiempo = "";
-            if (horas > 0) textoTiempo += (horas < 10 ? "0" : "") + horas + ":";
-            textoTiempo += (minutos < 10 ? "0" : "") + minutos + ":";
-            textoTiempo += (segundos < 10 ? "0" : "") + segundos;
-            
-            document.getElementById('ui-tiempo').innerText = textoTiempo;
+            let texto = (horas > 0 ? (horas < 10 ? "0"+horas+":" : horas+":") : "") + 
+                        (minutos < 10 ? "0"+minutos : minutos) + ":" + 
+                        (segundos < 10 ? "0"+segundos : segundos);
+            document.getElementById('ui-tiempo').innerText = texto;
         }
 
         function procesarGPS(posicion) {
-            document.getElementById('ui-estado').innerText = "🟢 GPS ACTIVO - REGISTRANDO RUTA";
-            document.getElementById('ui-estado').style.backgroundColor = "#00CC96";
-            document.getElementById('ui-estado').style.color = "#000";
-
             let lat = posicion.coords.latitude;
             let lon = posicion.coords.longitude;
+            let altitudActual = posicion.coords.altitude; 
             let velocidad_ms = posicion.coords.speed;
 
-            // 1. Velocidad
+            // 1. VELOCIDAD
             if (velocidad_ms !== null && velocidad_ms > 0) {
-                let velocidad_kmh = velocidad_ms * 3.6;
-                document.getElementById('ui-velocidad').innerText = velocidad_kmh.toFixed(1);
+                document.getElementById('ui-velocidad').innerText = (velocidad_ms * 3.6).toFixed(1);
             } else {
                 document.getElementById('ui-velocidad').innerText = "0.0";
             }
 
-            // 2. Distancia
+            // 2. KILÓMETROS Y PENDIENTE
             if (ultimaPosicion !== null) {
-                let dist = calcularDistancia(
+                let distKm = calcularDistancia(
                     ultimaPosicion.coords.latitude, ultimaPosicion.coords.longitude,
                     lat, lon
                 );
-                distanciaTotal += dist;
+                // Suma la distancia al cuenta kilómetros
+                distanciaTotal += distKm;
                 document.getElementById('ui-distancia').innerText = distanciaTotal.toFixed(2);
+
+                // Calcula la inclinación
+                if (altitudActual !== null && ultimaAltitud !== null) {
+                    let distMetros = distKm * 1000;
+                    distanciaParaPendiente += distMetros;
+
+                    if (distanciaParaPendiente >= 15) {
+                        let diferenciaAltitud = altitudActual - ultimaAltitud;
+                        let pendiente = (diferenciaAltitud / distanciaParaPendiente) * 100;
+                        
+                        actualizarSemaforo(pendiente);
+
+                        distanciaParaPendiente = 0;
+                        ultimaAltitud = altitudActual;
+                    }
+                } else if (altitudActual !== null && ultimaAltitud === null) {
+                    ultimaAltitud = altitudActual; 
+                }
             }
             ultimaPosicion = posicion;
 
-            // 3. MAPA EN VIVO
+            // 3. MAPA
             if (!mapa) {
-                // Si el mapa no existe, lo creamos
-                document.getElementById('mapa').style.display = 'block'; // Mostramos el recuadro
-                mapa = L.map('mapa').setView([lat, lon], 17); // Nivel de zoom 17 (bien cerca)
-                
-                // Cargamos las baldosas de OpenStreetMap
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19,
-                }).addTo(mapa);
-                
-                // Ponemos el marcador inicial y preparamos la línea verde
+                document.getElementById('mapa').style.display = 'block';
+                mapa = L.map('mapa').setView([lat, lon], 17);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
                 marcador = L.marker([lat, lon]).addTo(mapa);
                 trazadoRuta = L.polyline([], {color: '#00CC96', weight: 5}).addTo(mapa);
             } else {
-                // Si el mapa ya existe, solo movemos el marcador y centramos la cámara
                 marcador.setLatLng([lat, lon]);
                 mapa.panTo([lat, lon]);
             }
-            
-            // Agregamos el punto exacto a la línea verde para dibujar el recorrido
             trazadoRuta.addLatLng([lat, lon]);
+        }
+
+        // CONTROL DE COLORES Y AVISOS DE VOZ
+        function actualizarSemaforo(pendiente) {
+            document.getElementById('ui-pendiente').innerText = pendiente.toFixed(1);
+            let uiEstado = document.getElementById('ui-estado');
+            let colorPendiente = document.getElementById('ui-pendiente');
+
+            if (pendiente <= 2) {
+                uiEstado.innerText = "🟢 ZONA VERDE: Llano o Bajada";
+                uiEstado.style.backgroundColor = "#00CC96";
+                uiEstado.style.color = "#000";
+                colorPendiente.style.color = "#00CC96";
+                
+                if (zonaActual !== "VERDE") {
+                    hablar("Zona verde. Terreno favorable. Ritmo constante.");
+                    zonaActual = "VERDE";
+                }
+
+            } else if (pendiente <= 8) {
+                uiEstado.innerText = "🟡 ZONA AMARILLA: Trepada Constante";
+                uiEstado.style.backgroundColor = "#FECB52";
+                uiEstado.style.color = "#000";
+                colorPendiente.style.color = "#FECB52";
+
+                if (zonaActual !== "AMARILLA") {
+                    hablar("Atención, zona amarilla. Inclinación media. Regulá el aire.");
+                    zonaActual = "AMARILLA";
+                }
+
+            } else {
+                uiEstado.innerText = "🔴 ZONA ROJA: ¡Pared Dura!";
+                uiEstado.style.backgroundColor = "#EF553B";
+                uiEstado.style.color = "#FFF";
+                colorPendiente.style.color = "#EF553B";
+
+                if (zonaActual !== "ROJA") {
+                    hablar("Peligro. Pared por delante en zona roja. Meté piñón grande y regulá la respiración.");
+                    zonaActual = "ROJA";
+                }
+            }
         }
 
         function errorGPS(err) {
