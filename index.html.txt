@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Radar Táctico MTB - EN VIVO</title>
+    <style>
+        body { 
+            background-color: #121212; color: #ffffff; 
+            font-family: Arial, sans-serif; text-align: center; 
+            padding: 20px; margin: 0;
+        }
+        .numero-gigante { font-size: 100px; font-weight: bold; margin: 20px 0; }
+        .texto-chico { font-size: 20px; color: #aaa; }
+        .cartel-zona { 
+            padding: 20px; border-radius: 10px; margin: 20px; 
+            font-size: 24px; font-weight: bold; background-color: #333;
+        }
+        .boton { 
+            background-color: #00CC96; border: none; padding: 20px 40px; 
+            font-size: 20px; border-radius: 30px; font-weight: bold; cursor: pointer;
+            margin-top: 20px; box-shadow: 0px 4px 15px rgba(0, 204, 150, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🚴‍♂️ Radar Táctico (GPS EN VIVO)</h2>
+
+    <div>
+        <p class="numero-gigante" id="velocidad">0.0</p>
+        <p class="texto-chico">km/h</p>
+
+        <p class="numero-gigante" style="font-size: 60px;" id="pendiente">0.0</p>
+        <p class="texto-chico">% Pendiente</p>
+    </div>
+
+    <div class="cartel-zona" id="zona">ESPERANDO GPS...</div>
+
+    <!-- Este botón ahora enciende el GPS real -->
+    <button class="boton" id="btn-iniciar" onclick="iniciarRadar()">📡 INICIAR ENTRENAMIENTO</button>
+
+    <script>
+        let hablando = false;
+        let altitudAnterior = null;
+
+        function iniciarRadar() {
+            document.getElementById('btn-iniciar').style.display = 'none';
+            document.getElementById('zona').innerText = "CONECTANDO SATÉLITES...";
+
+            // Verificamos si el dispositivo tiene GPS
+            if ("geolocation" in navigator) {
+                // Esta función de HTML5 lee el GPS en vivo todo el tiempo
+                navigator.geolocation.watchPosition(procesarGPS, errorGPS, {
+                    enableHighAccuracy: true, 
+                    maximumAge: 0, 
+                    timeout: 5000
+                });
+            } else {
+                alert("Tu dispositivo no tiene GPS compatible.");
+            }
+        }
+
+        // Esta función se ejecuta cada vez que te movés un metro
+        function procesarGPS(posicion) {
+            // El GPS tira la velocidad en metros por segundo, la pasamos a km/h
+            let velMetersPerSecond = posicion.coords.speed || 0;
+            let velKmh = (velMetersPerSecond * 3.6).toFixed(1);
+            
+            document.getElementById('velocidad').innerText = velKmh;
+
+            // Cálculo básico de pendiente usando altitud en vivo
+            let altitudActual = posicion.coords.altitude;
+            let pendiente = 0;
+
+            if (altitudActual !== null && altitudAnterior !== null && velMetersPerSecond > 0) {
+                let diferenciaAltura = altitudActual - altitudAnterior;
+                // Calculamos cuánto avanzaste en 1 segundo aprox para sacar el porcentaje
+                pendiente = ((diferenciaAltura / velMetersPerSecond) * 100).toFixed(1);
+            }
+            altitudAnterior = altitudActual;
+
+            document.getElementById('pendiente').innerText = pendiente;
+
+            // Motor de color y voz
+            let cartel = document.getElementById('zona');
+            
+            if (pendiente <= 2) {
+                cartel.innerText = "🟢 Llano / Bajada";
+                cartel.style.backgroundColor = "#00CC96"; cartel.style.color = "#000";
+                hablando = false;
+            } else if (pendiente <= 8) {
+                cartel.innerText = "🟡 Trepada Constante";
+                cartel.style.backgroundColor = "#FECB52"; cartel.style.color = "#000";
+                hablando = false;
+            } else {
+                cartel.innerText = "🔴 Pared Dura";
+                cartel.style.backgroundColor = "#EF553B"; cartel.style.color = "#fff";
+                
+                if (!hablando) {
+                    let msj = new SpeechSynthesisUtterance(`Pared dura. Ajustá los cambios.`);
+                    msj.lang = 'es-AR';
+                    window.speechSynthesis.speak(msj);
+                    hablando = true; 
+                }
+            }
+        }
+
+        function errorGPS(err) {
+            document.getElementById('zona').innerText = "❌ ERROR DE SEÑAL GPS";
+        }
+    </script>
+</body>
+</html>
