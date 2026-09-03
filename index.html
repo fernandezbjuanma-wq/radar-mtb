@@ -2,112 +2,228 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Radar Táctico MTB - EN VIVO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar Táctico MTB</title>
+    
+    <!-- Librerías del Mapa (Leaflet) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         body { 
-            background-color: #121212; color: #ffffff; 
-            font-family: Arial, sans-serif; text-align: center; 
-            padding: 20px; margin: 0;
+            background-color: #121212; 
+            color: #ffffff; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            text-align: center; 
+            padding: 15px; 
+            margin: 0;
         }
-        .numero-gigante { font-size: 100px; font-weight: bold; margin: 20px 0; }
-        .texto-chico { font-size: 20px; color: #aaa; }
-        .cartel-zona { 
-            padding: 20px; border-radius: 10px; margin: 20px; 
-            font-size: 24px; font-weight: bold; background-color: #333;
+        .header { font-size: 18px; color: #00CC96; margin-bottom: 20px; font-weight: bold; }
+        
+        /* Grilla para organizar los datos */
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
         }
-        .boton { 
-            background-color: #00CC96; border: none; padding: 20px 40px; 
-            font-size: 20px; border-radius: 30px; font-weight: bold; cursor: pointer;
-            margin-top: 20px; box-shadow: 0px 4px 15px rgba(0, 204, 150, 0.4);
+        
+        .caja-dato {
+            background-color: #1e1e1e;
+            padding: 15px 5px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .numero-gigante { font-size: 40px; font-weight: bold; margin: 0; line-height: 1.1; }
+        .texto-chico { font-size: 14px; color: #aaa; margin: 5px 0 0 0; }
+        
+        /* Colores dinámicos */
+        .color-velocidad { color: #ffffff; }
+        .color-pendiente { color: #FECB52; }
+        .color-distancia { color: #4DA8DA; }
+        .color-tiempo { color: #FF9F1C; }
+
+        /* Contenedor del Mapa */
+        #mapa {
+            height: 250px;
+            width: 100%;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: none; /* Se oculta hasta tener señal GPS */
+            border: 2px solid #333;
+        }
+
+        .zona { 
+            padding: 15px; 
+            border-radius: 12px; 
+            font-size: 16px; 
+            font-weight: bold; 
+            background-color: #333;
+            margin-bottom: 20px;
+        }
+
+        .btn-iniciar { 
+            background-color: #00CC96; 
+            color: #121212; 
+            border: none; 
+            padding: 18px 35px; 
+            font-size: 20px; 
+            border-radius: 50px; 
+            cursor: pointer; 
+            font-weight: bold;
+            width: 100%;
+            max-width: 300px;
         }
     </style>
 </head>
 <body>
 
-    <h2>🚴‍♂️ Radar Táctico (GPS EN VIVO)</h2>
+    <div class="header">🚵‍♂️ RADAR TÁCTICO EN VIVO</div>
 
-    <div>
-        <p class="numero-gigante" id="velocidad">0.0</p>
-        <p class="texto-chico">km/h</p>
-
-        <p class="numero-gigante" style="font-size: 60px;" id="pendiente">0.0</p>
-        <p class="texto-chico">% Pendiente</p>
+    <!-- Panel de 4 datos -->
+    <div class="grid-container">
+        <div class="caja-dato">
+            <p class="numero-gigante color-velocidad" id="ui-velocidad">0.0</p>
+            <p class="texto-chico">km/h</p>
+        </div>
+        <div class="caja-dato">
+            <p class="numero-gigante color-pendiente" id="ui-pendiente">0.0</p>
+            <p class="texto-chico">% Pendiente</p>
+        </div>
+        <div class="caja-dato">
+            <p class="numero-gigante color-distancia" id="ui-distancia">0.00</p>
+            <p class="texto-chico">Kilómetros</p>
+        </div>
+        <div class="caja-dato">
+            <p class="numero-gigante color-tiempo" id="ui-tiempo">00:00</p>
+            <p class="texto-chico">Tiempo</p>
+        </div>
     </div>
 
-    <div class="cartel-zona" id="zona">ESPERANDO GPS...</div>
+    <!-- Acá va a aparecer el mapa -->
+    <div id="mapa"></div>
 
-    <!-- Este botón ahora enciende el GPS real -->
-    <button class="boton" id="btn-iniciar" onclick="iniciarRadar()">📡 INICIAR ENTRENAMIENTO</button>
+    <div class="zona" id="ui-estado">
+        ⚪ Esperando inicio...
+    </div>
+
+    <button class="btn-iniciar" id="btn-start" onclick="iniciarRecorrido()">▶️ INICIAR RECORRIDO</button>
 
     <script>
-        let hablando = false;
-        let altitudAnterior = null;
+        // Variables globales
+        let cronometro;
+        let segundosTranscurridos = 0;
+        let distanciaTotal = 0;
+        let ultimaPosicion = null;
+        
+        // Variables del Mapa
+        let mapa = null;
+        let marcador = null;
+        let trazadoRuta = null;
 
-        function iniciarRadar() {
-            document.getElementById('btn-iniciar').style.display = 'none';
-            document.getElementById('zona').innerText = "CONECTANDO SATÉLITES...";
+        function iniciarRecorrido() {
+            document.getElementById('btn-start').style.display = 'none';
+            document.getElementById('ui-estado').innerText = "📡 Buscando señal GPS...";
+            document.getElementById('ui-estado').style.backgroundColor = "#FECB52";
+            document.getElementById('ui-estado').style.color = "#000";
 
-            // Verificamos si el dispositivo tiene GPS
+            // Iniciar Cronómetro
+            cronometro = setInterval(actualizarTiempo, 1000);
+
+            // Iniciar GPS
             if ("geolocation" in navigator) {
-                // Esta función de HTML5 lee el GPS en vivo todo el tiempo
                 navigator.geolocation.watchPosition(procesarGPS, errorGPS, {
-                    enableHighAccuracy: true, 
-                    maximumAge: 0, 
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
                     timeout: 5000
                 });
             } else {
-                alert("Tu dispositivo no tiene GPS compatible.");
+                alert("Tu navegador no soporta GPS.");
             }
         }
 
-        // Esta función se ejecuta cada vez que te movés un metro
+        function actualizarTiempo() {
+            segundosTranscurridos++;
+            let horas = Math.floor(segundosTranscurridos / 3600);
+            let minutos = Math.floor((segundosTranscurridos % 3600) / 60);
+            let segundos = segundosTranscurridos % 60;
+            
+            let textoTiempo = "";
+            if (horas > 0) textoTiempo += (horas < 10 ? "0" : "") + horas + ":";
+            textoTiempo += (minutos < 10 ? "0" : "") + minutos + ":";
+            textoTiempo += (segundos < 10 ? "0" : "") + segundos;
+            
+            document.getElementById('ui-tiempo').innerText = textoTiempo;
+        }
+
         function procesarGPS(posicion) {
-            // El GPS tira la velocidad en metros por segundo, la pasamos a km/h
-            let velMetersPerSecond = posicion.coords.speed || 0;
-            let velKmh = (velMetersPerSecond * 3.6).toFixed(1);
-            
-            document.getElementById('velocidad').innerText = velKmh;
+            document.getElementById('ui-estado').innerText = "🟢 GPS ACTIVO - REGISTRANDO RUTA";
+            document.getElementById('ui-estado').style.backgroundColor = "#00CC96";
+            document.getElementById('ui-estado').style.color = "#000";
 
-            // Cálculo básico de pendiente usando altitud en vivo
-            let altitudActual = posicion.coords.altitude;
-            let pendiente = 0;
+            let lat = posicion.coords.latitude;
+            let lon = posicion.coords.longitude;
+            let velocidad_ms = posicion.coords.speed;
 
-            if (altitudActual !== null && altitudAnterior !== null && velMetersPerSecond > 0) {
-                let diferenciaAltura = altitudActual - altitudAnterior;
-                // Calculamos cuánto avanzaste en 1 segundo aprox para sacar el porcentaje
-                pendiente = ((diferenciaAltura / velMetersPerSecond) * 100).toFixed(1);
-            }
-            altitudAnterior = altitudActual;
-
-            document.getElementById('pendiente').innerText = pendiente;
-
-            // Motor de color y voz
-            let cartel = document.getElementById('zona');
-            
-            if (pendiente <= 2) {
-                cartel.innerText = "🟢 Llano / Bajada";
-                cartel.style.backgroundColor = "#00CC96"; cartel.style.color = "#000";
-                hablando = false;
-            } else if (pendiente <= 8) {
-                cartel.innerText = "🟡 Trepada Constante";
-                cartel.style.backgroundColor = "#FECB52"; cartel.style.color = "#000";
-                hablando = false;
+            // 1. Velocidad
+            if (velocidad_ms !== null && velocidad_ms > 0) {
+                let velocidad_kmh = velocidad_ms * 3.6;
+                document.getElementById('ui-velocidad').innerText = velocidad_kmh.toFixed(1);
             } else {
-                cartel.innerText = "🔴 Pared Dura";
-                cartel.style.backgroundColor = "#EF553B"; cartel.style.color = "#fff";
-                
-                if (!hablando) {
-                    let msj = new SpeechSynthesisUtterance(`Pared dura. Ajustá los cambios.`);
-                    msj.lang = 'es-AR';
-                    window.speechSynthesis.speak(msj);
-                    hablando = true; 
-                }
+                document.getElementById('ui-velocidad').innerText = "0.0";
             }
+
+            // 2. Distancia
+            if (ultimaPosicion !== null) {
+                let dist = calcularDistancia(
+                    ultimaPosicion.coords.latitude, ultimaPosicion.coords.longitude,
+                    lat, lon
+                );
+                distanciaTotal += dist;
+                document.getElementById('ui-distancia').innerText = distanciaTotal.toFixed(2);
+            }
+            ultimaPosicion = posicion;
+
+            // 3. MAPA EN VIVO
+            if (!mapa) {
+                // Si el mapa no existe, lo creamos
+                document.getElementById('mapa').style.display = 'block'; // Mostramos el recuadro
+                mapa = L.map('mapa').setView([lat, lon], 17); // Nivel de zoom 17 (bien cerca)
+                
+                // Cargamos las baldosas de OpenStreetMap
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                }).addTo(mapa);
+                
+                // Ponemos el marcador inicial y preparamos la línea verde
+                marcador = L.marker([lat, lon]).addTo(mapa);
+                trazadoRuta = L.polyline([], {color: '#00CC96', weight: 5}).addTo(mapa);
+            } else {
+                // Si el mapa ya existe, solo movemos el marcador y centramos la cámara
+                marcador.setLatLng([lat, lon]);
+                mapa.panTo([lat, lon]);
+            }
+            
+            // Agregamos el punto exacto a la línea verde para dibujar el recorrido
+            trazadoRuta.addLatLng([lat, lon]);
         }
 
         function errorGPS(err) {
-            document.getElementById('zona').innerText = "❌ ERROR DE SEÑAL GPS";
+            document.getElementById('ui-estado').innerText = "❌ ERROR DE SEÑAL GPS";
+            document.getElementById('ui-estado').style.backgroundColor = "#EF553B";
+            document.getElementById('ui-estado').style.color = "#FFF";
+        }
+
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            const R = 6371; 
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c; 
         }
     </script>
 </body>
